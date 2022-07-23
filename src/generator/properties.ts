@@ -1,5 +1,5 @@
 import { DMMF } from '@prisma/generator-helper'
-import { DEFINITIONS_ROOT } from './constants'
+import { DEFINITIONS_ROOT, DEFINITIONS_ROOT_OPENAPI } from './constants'
 import {
     assertNever,
     isEnumType,
@@ -19,10 +19,13 @@ import type {
     JSONSchema7Definition,
     JSONSchema7TypeName,
 } from 'json-schema'
+
+import { Relations } from './model'
 import { assertFieldTypeIsString } from './assertions'
 
 function getJSONSchemaScalar(
     fieldType: PrismaPrimitive,
+    { openapiCompatible }: TransformOptions,
 ): JSONSchema7TypeName | Array<JSONSchema7TypeName> {
     switch (fieldType) {
         case 'Int':
@@ -36,6 +39,10 @@ function getJSONSchemaScalar(
         case 'Decimal':
             return 'number'
         case 'Json':
+            if (openapiCompatible !== 'false') {
+                // openapi not support type as string[]
+                return 'object'
+            }
             return ['number', 'string', 'boolean', 'object', 'array', 'null']
         case 'Boolean':
             return 'boolean'
@@ -44,11 +51,14 @@ function getJSONSchemaScalar(
     }
 }
 
-function getJSONSchemaType(field: DMMF.Field): JSONSchema7['type'] {
+function getJSONSchemaType(
+    field: DMMF.Field,
+    transformOptions: TransformOptions,
+): JSONSchema7['type'] {
     const { isList, isRequired } = field
     const scalarFieldType =
         isScalarType(field) && !isList
-            ? getJSONSchemaScalar(field.type)
+            ? getJSONSchemaScalar(field.type, transformOptions)
             : field.isList
             ? 'array'
             : isEnumType(field)
@@ -56,6 +66,11 @@ function getJSONSchemaType(field: DMMF.Field): JSONSchema7['type'] {
             : 'object'
 
     const isFieldUnion = Array.isArray(scalarFieldType)
+
+    if (transformOptions.openapiCompatible !== 'false') {
+        // openapi not support both type = 'null' and type as string[]
+        return scalarFieldType
+    }
 
     return isRequired || isList
         ? scalarFieldType
@@ -111,14 +126,29 @@ function getFormatByDMMFType(
 
 function getJSONSchemaForPropertyReference(
     field: DMMF.Field,
-    { schemaId }: TransformOptions,
+    { schemaId, openapiCompatible }: TransformOptions,
 ): JSONSchema7 {
     const notNullable = field.isRequired || field.isList
 
     assertFieldTypeIsString(field.type)
 
-    const typeRef = `${DEFINITIONS_ROOT}${field.type}`
+    const typeRef = `${
+        openapiCompatible !== 'false'
+            ? DEFINITIONS_ROOT_OPENAPI
+            : DEFINITIONS_ROOT
+    }${field.type}`
     const ref = { $ref: schemaId ? `${schemaId}${typeRef}` : typeRef }
+
+    if (openapiCompatible === 'refWithAllOf') {
+        // openapi not support type = 'null'
+        return { allOf: [ref] }
+    }
+
+    if (openapiCompatible === 'true') {
+        // openapi not support type = 'null'
+        return ref
+    }
+
     return notNullable ? ref : { anyOf: [ref, { type: 'null' }] }
 }
 
@@ -129,7 +159,7 @@ function getItemsByDMMFType(
     return (isScalarType(field) && !field.isList) || isEnumType(field)
         ? undefined
         : isScalarType(field) && field.isList
-        ? { type: getJSONSchemaScalar(field.type) }
+        ? { type: getJSONSchemaScalar(field.type, transformOptions) }
         : getJSONSchemaForPropertyReference(field, transformOptions)
 }
 
@@ -157,7 +187,7 @@ function getPropertyDefinition(
     transformOptions: TransformOptions,
     field: DMMF.Field,
 ) {
-    const type = getJSONSchemaType(field)
+    const type = getJSONSchemaType(field, transformOptions)
     const format = getFormatByDMMFType(field.type)
     const items = getItemsByDMMFType(field, transformOptions)
     const enumList = getEnumListByDMMFType(modelMetaData)(field)
@@ -179,6 +209,7 @@ function getPropertyDefinition(
 export function getJSONSchemaProperty(
     modelMetaData: ModelMetaData,
     transformOptions: TransformOptions,
+    relations: Relations,
 ) {
     return (field: DMMF.Field): PropertyMap => {
         const propertyMetaData: PropertyMetaData = {
@@ -190,6 +221,106 @@ export function getJSONSchemaProperty(
         const property = isSingleReference(field)
             ? getJSONSchemaForPropertyReference(field, transformOptions)
             : getPropertyDefinition(modelMetaData, transformOptions, field)
+
+        if (
+            transformOptions.openapiCompatible !== 'false' &&
+            transformOptions.relationMetadata
+        ) {
+            if (field.isId) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                ;(property as any)['x-prisma-is-id'] = true
+            }
+
+            if (field.isUnique) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                ;(property as any)['x-prisma-is-unique'] = true
+            }
+
+            if (field.isRequired && !field.hasDefaultValue) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                ;(property as any)['x-prisma-is-notnull'] = true
+            }
+
+            Object.keys(relations).forEach((relationName) => {
+                const { relationFromFields, modelDefined } =
+                    relations[relationName]
+
+                if (
+                    relationFromFields.includes(field.name) &&
+                    modelMetaData.name === modelDefined
+                ) {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                    ;(property as any)['x-prisma-is-relation-id'] = true
+                }
+            })
+
+            if (modelMetaData.ids) {
+                if (modelMetaData.ids.includes(field.name)) {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                    ;(property as any)['x-prisma-is-id'] = true
+                }
+            }
+
+            if (field.relationName) {
+                const rel = relations[field.relationName]
+                const fromType = rel.modelDefined
+                const toType = rel.modelRef
+                const fromFields = rel.relationFromFields.join(',')
+                const toFields = rel.relationToFields.join(',')
+
+                // console.log(
+                //     'model:',
+                //     modelMetaData.name,
+                //     '| field:',
+                //     field.name,
+                //     '| type:',
+                //     field.type,
+                //     '| rel:',
+                //     field.relationName,
+                //     fromType,
+                //     fromFields,
+                //     toType,
+                //     toFields,
+                // )
+
+                const currentModel = modelMetaData.name
+
+                if (
+                    currentModel === fromType &&
+                    field.name === rel.fieldDefined
+                ) {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                    ;(property as any)[
+                        'x-prisma-relation'
+                    ] = `rel:belongs-to,join:${fromFields}=${toFields}`
+                }
+
+                if (currentModel === toType && field.name === rel.fieldRef) {
+                    if (field.isList) {
+                        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                        ;(property as any)[
+                            'x-prisma-relation'
+                        ] = `rel:has-many,join:${toFields}=${fromFields}`
+                    } else {
+                        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                        ;(property as any)[
+                            'x-prisma-relation'
+                        ] = `rel:has-one,join:${toFields}=${fromFields}`
+                    }
+                }
+
+                if (
+                    fromType === toType && // self references type
+                    currentModel === toType &&
+                    field.name === rel.fieldDefined
+                ) {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                    ;(property as any)[
+                        'x-prisma-relation'
+                    ] = `rel:belongs-to,join:${fromFields}=${toFields}`
+                }
+            }
+        }
 
         return [field.name, property, propertyMetaData]
     }
