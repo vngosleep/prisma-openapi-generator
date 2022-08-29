@@ -1,5 +1,5 @@
 {
-    "name": "prisma-json-schema-generator",
+    "name": "prisma-openapi-generator",
     "version": "3.0.1",
     "main": "dist/index.js",
     "license": "MIT",
@@ -80,6 +80,6 @@
         "trailingComma": "all"
     },
     "bin": {
-        "prisma-json-schema-generator": "dist/cli.js"
+        "prisma-openapi-generator": "dist/cli.js"
     }
 }
