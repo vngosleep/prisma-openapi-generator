@@ -23,7 +23,7 @@ typings/
 *.tsbuildinfo
 
 # Typescript output
-dist/
+# dist/
 
 # Optional npm cache directory
 .npm
