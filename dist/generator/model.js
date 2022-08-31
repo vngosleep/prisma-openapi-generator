@@ -70,7 +70,11 @@ function getJSONSchemaModel(modelMetaData, transformOptions, relations) {
         if (transformOptions.includeRequiredFields) {
             const required = definitionPropsMap.reduce((filtered, [name, , fieldMetaData])=>{
                 if (fieldMetaData.required && fieldMetaData.isScalar && !fieldMetaData.hasDefaultValue) {
-                    filtered.push(name);
+                    if (transformOptions.propertyName === "camelCase") {
+                        filtered.push((0, _helpers.toCamel)(name));
+                    } else {
+                        filtered.push(name);
+                    }
                 }
                 return filtered;
             }, []);
