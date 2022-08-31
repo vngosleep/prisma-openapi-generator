@@ -121,7 +121,11 @@ export function getJSONSchemaModel(
                         fieldMetaData.isScalar &&
                         !fieldMetaData.hasDefaultValue
                     ) {
-                        filtered.push(name)
+                        if (transformOptions.propertyName === 'camelCase') {
+                            filtered.push(toCamel(name))
+                        } else {
+                            filtered.push(name)
+                        }
                     }
                     return filtered
                 },
