@@ -247,7 +247,16 @@ export function getJSONSchemaProperty(
             }
 
             // detect json
-            if (property.type === 'object') {
+            if (field.type === 'Json') {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                ;(property as any)['x-prisma-field-json'] = true
+            }
+
+            const definedJsonInDocRegex = /\[\[openapi:.*type=json.*\]\]/gm
+            if (
+                field.documentation &&
+                field.documentation.search(definedJsonInDocRegex) !== -1
+            ) {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
                 ;(property as any)['x-prisma-field-json'] = true
             }

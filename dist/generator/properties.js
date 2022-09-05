@@ -188,7 +188,11 @@ function getJSONSchemaProperty(modelMetaData, transformOptions, relations) {
                 property["x-prisma-is-notnull"] = true;
             }
             // detect json
-            if (property.type === "object") {
+            if (field.type === "Json") {
+                property["x-prisma-field-json"] = true;
+            }
+            const definedJsonInDocRegex = /\[\[openapi:.*type=json.*\]\]/gm;
+            if (field.documentation && field.documentation.search(definedJsonInDocRegex) !== -1) {
                 property["x-prisma-field-json"] = true;
             }
             Object.keys(relations).forEach((relationName)=>{
