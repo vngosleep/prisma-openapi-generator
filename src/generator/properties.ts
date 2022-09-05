@@ -236,6 +236,11 @@ export function getJSONSchemaProperty(
                 ;(property as any)['x-prisma-is-unique'] = true
             }
 
+            if (field.hasDefaultValue) {
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                ;(property as any)['x-prisma-has-default'] = true
+            }
+
             if (field.isRequired && !field.hasDefaultValue) {
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
                 ;(property as any)['x-prisma-is-notnull'] = true

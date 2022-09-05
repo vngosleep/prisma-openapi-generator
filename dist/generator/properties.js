@@ -181,6 +181,9 @@ function getJSONSchemaProperty(modelMetaData, transformOptions, relations) {
             if (field.isUnique) {
                 property["x-prisma-is-unique"] = true;
             }
+            if (field.hasDefaultValue) {
+                property["x-prisma-has-default"] = true;
+            }
             if (field.isRequired && !field.hasDefaultValue) {
                 property["x-prisma-is-notnull"] = true;
             }
