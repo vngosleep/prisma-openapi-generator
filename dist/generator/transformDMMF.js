@@ -58,6 +58,12 @@ function transformDMMF(dmmf, transformOptions = {
             paths: {
                 "/model/{name}": {
                     get: {
+                        summary: "get-model-schema",
+                        operationId: "get-model-schema",
+                        description: "get-model-schema",
+                        tags: [
+                            "models"
+                        ],
                         responses: {
                             "200": {
                                 description: "model",
