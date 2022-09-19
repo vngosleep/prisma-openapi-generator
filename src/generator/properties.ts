@@ -127,7 +127,7 @@ function getFormatByDMMFType(
 function getJSONSchemaForPropertyReference(
     field: DMMF.Field,
     { schemaId, openapiCompatible }: TransformOptions,
-): JSONSchema7 {
+): JSONSchema7WithX {
     const notNullable = field.isRequired || field.isList
 
     assertFieldTypeIsString(field.type)
@@ -194,7 +194,7 @@ function getPropertyDefinition(
     const defaultValue = getDefaultValue(field)
     const description = getDescription(field)
 
-    const definition: JSONSchema7Definition = {
+    const definition: JSONSchema7WithX = {
         type,
         ...(isDefined(defaultValue) && { default: defaultValue }),
         ...(isDefined(format) && { format }),
@@ -204,6 +204,19 @@ function getPropertyDefinition(
     }
 
     return definition
+}
+
+type JSONSchema7WithX = JSONSchema7 & {
+    'x-prisma-is-id'?: boolean
+    'x-prisma-is-relation-id'?: boolean
+    'x-prisma-relation'?: string
+    'x-prisma-is-unique'?: boolean
+    'x-prisma-has-default'?: boolean
+    'x-prisma-is-notnull'?: boolean
+    'x-prisma-field-json'?: boolean
+    'x-openapi-settable'?: boolean
+    'x-openapi-field-json'?: boolean | string
+    'x-openapi-optional'?: boolean
 }
 
 export function getJSONSchemaProperty(
@@ -222,34 +235,33 @@ export function getJSONSchemaProperty(
             ? getJSONSchemaForPropertyReference(field, transformOptions)
             : getPropertyDefinition(modelMetaData, transformOptions, field)
 
+        if (!property.description && field.documentation) {
+            property.description = field.documentation
+        }
+
         if (
             transformOptions.openapiCompatible !== 'false' &&
             transformOptions.relationMetadata
         ) {
             if (field.isId) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                ;(property as any)['x-prisma-is-id'] = true
+                property['x-prisma-is-id'] = true
             }
 
             if (field.isUnique) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                ;(property as any)['x-prisma-is-unique'] = true
+                property['x-prisma-is-unique'] = true
             }
 
             if (field.hasDefaultValue) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                ;(property as any)['x-prisma-has-default'] = true
+                property['x-prisma-has-default'] = true
             }
 
             if (field.isRequired && !field.hasDefaultValue) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                ;(property as any)['x-prisma-is-notnull'] = true
+                property['x-prisma-is-notnull'] = true
             }
 
             // detect json
             if (field.type === 'Json') {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                ;(property as any)['x-prisma-field-json'] = true
+                property['x-prisma-field-json'] = true
             }
 
             const definedJsonInDocRegex = /\[\[openapi:.*type=json.*\]\]/gm
@@ -257,8 +269,43 @@ export function getJSONSchemaProperty(
                 field.documentation &&
                 field.documentation.search(definedJsonInDocRegex) !== -1
             ) {
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                ;(property as any)['x-prisma-field-json'] = true
+                property['x-openapi-field-json'] = true
+            }
+
+            const definedJsonArrayInDocRegex =
+                /\[\[openapi:.*type=jsonarray.*\]\]/gm
+            if (
+                field.documentation &&
+                field.documentation.search(definedJsonArrayInDocRegex) !== -1
+            ) {
+                property['x-openapi-field-json'] = 'array'
+            }
+
+            const definedSettableInDocRegex =
+                /\[\[openapi:.*settable=true.*\]\]/gm
+            if (
+                field.documentation &&
+                field.documentation.search(definedSettableInDocRegex) !== -1
+            ) {
+                property['x-openapi-settable'] = true
+            }
+
+            const definedReadonlyInDocRegex =
+                /\[\[openapi:.*settable=false.*\]\]/gm
+            if (
+                field.documentation &&
+                field.documentation.search(definedReadonlyInDocRegex) !== -1
+            ) {
+                property['x-openapi-settable'] = false
+            }
+
+            const definedOptionalInDocRegex =
+                /\[\[openapi:.*optional=true.*\]\]/gm
+            if (
+                field.documentation &&
+                field.documentation.search(definedOptionalInDocRegex) !== -1
+            ) {
+                property['x-openapi-optional'] = true
             }
 
             Object.keys(relations).forEach((relationName) => {
@@ -269,15 +316,13 @@ export function getJSONSchemaProperty(
                     relationFromFields.includes(field.name) &&
                     modelMetaData.name === modelDefined
                 ) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                    ;(property as any)['x-prisma-is-relation-id'] = true
+                    property['x-prisma-is-relation-id'] = true
                 }
             })
 
             if (modelMetaData.ids) {
                 if (modelMetaData.ids.includes(field.name)) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                    ;(property as any)['x-prisma-is-id'] = true
+                    property['x-prisma-is-id'] = true
                 }
             }
 
@@ -309,21 +354,18 @@ export function getJSONSchemaProperty(
                     currentModel === fromType &&
                     field.name === rel.fieldDefined
                 ) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                    ;(property as any)[
+                    property[
                         'x-prisma-relation'
                     ] = `rel:belongs-to,join:${fromFields}=${toFields}`
                 }
 
                 if (currentModel === toType && field.name === rel.fieldRef) {
                     if (field.isList) {
-                        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                        ;(property as any)[
+                        property[
                             'x-prisma-relation'
                         ] = `rel:has-many,join:${toFields}=${fromFields}`
                     } else {
-                        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                        ;(property as any)[
+                        property[
                             'x-prisma-relation'
                         ] = `rel:has-one,join:${toFields}=${fromFields}`
                     }
@@ -334,8 +376,7 @@ export function getJSONSchemaProperty(
                     currentModel === toType &&
                     field.name === rel.fieldDefined
                 ) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                    ;(property as any)[
+                    property[
                         'x-prisma-relation'
                     ] = `rel:belongs-to,join:${fromFields}=${toFields}`
                 }

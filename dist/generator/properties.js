@@ -174,6 +174,9 @@ function getJSONSchemaProperty(modelMetaData, transformOptions, relations) {
             isScalar: (0, _helpers.isScalarType)(field) || (0, _helpers.isEnumType)(field)
         };
         const property = isSingleReference(field) ? getJSONSchemaForPropertyReference(field, transformOptions) : getPropertyDefinition(modelMetaData, transformOptions, field);
+        if (!property.description && field.documentation) {
+            property.description = field.documentation;
+        }
         if (transformOptions.openapiCompatible !== "false" && transformOptions.relationMetadata) {
             if (field.isId) {
                 property["x-prisma-is-id"] = true;
@@ -193,7 +196,23 @@ function getJSONSchemaProperty(modelMetaData, transformOptions, relations) {
             }
             const definedJsonInDocRegex = /\[\[openapi:.*type=json.*\]\]/gm;
             if (field.documentation && field.documentation.search(definedJsonInDocRegex) !== -1) {
-                property["x-prisma-field-json"] = true;
+                property["x-openapi-field-json"] = true;
+            }
+            const definedJsonArrayInDocRegex = /\[\[openapi:.*type=jsonarray.*\]\]/gm;
+            if (field.documentation && field.documentation.search(definedJsonArrayInDocRegex) !== -1) {
+                property["x-openapi-field-json"] = "array";
+            }
+            const definedSettableInDocRegex = /\[\[openapi:.*settable=true.*\]\]/gm;
+            if (field.documentation && field.documentation.search(definedSettableInDocRegex) !== -1) {
+                property["x-openapi-settable"] = true;
+            }
+            const definedReadonlyInDocRegex = /\[\[openapi:.*settable=false.*\]\]/gm;
+            if (field.documentation && field.documentation.search(definedReadonlyInDocRegex) !== -1) {
+                property["x-openapi-settable"] = false;
+            }
+            const definedOptionalInDocRegex = /\[\[openapi:.*optional=true.*\]\]/gm;
+            if (field.documentation && field.documentation.search(definedOptionalInDocRegex) !== -1) {
+                property["x-openapi-optional"] = true;
             }
             Object.keys(relations).forEach((relationName)=>{
                 const { relationFromFields , modelDefined  } = relations[relationName];
